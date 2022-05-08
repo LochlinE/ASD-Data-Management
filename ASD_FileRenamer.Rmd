@@ -1,0 +1,30 @@
+---
+title: "Add time prefix to files"
+author: "Lochlin Ermatinger"
+date: '2022-04-14'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+fileStorage <- "C:\\Users\\lochl\\OneDrive\\Desktop\\Sawfly Lab\\ASD\\2022\\Leaf\\LB\\DC2.5.5.22\\Processed\\"
+
+fileNames <- list.files(fileStorage)
+
+filePrefix = function(files,prefixes) {
+  output <- paste(prefixes,files,sep = "")
+  return(output)
+}
+
+newFileNames <- filePrefix(fileNames,"x")
+
+file.rename(paste0(fileStorage,fileNames),
+            paste0(fileStorage,newFileNames))
+
+```
+
+
