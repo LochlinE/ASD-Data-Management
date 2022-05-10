@@ -10,20 +10,22 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-library(tidyverse)
-fileStorage <- "C:\\Users\\lochl\\OneDrive\\Desktop\\Sawfly Lab\\ASD\\2022\\Leaf\\LB\\DC2.5.5.22\\Processed\\"
+# This script is not constrained to the .asd file format. 
+# It can be used to change the filenames of any data format so long as they are all stored in the same location.  
 
-fileNames <- list.files(fileStorage)
+fileStorage <- "C:\\Users\\lochl\\OneDrive\\Desktop\\Sawfly Lab\\ASD\\2022\\Leaf\\LB\\DC2.5.5.22\\Processed\\" #Folder location of files.
 
-filePrefix = function(files,prefixes) {
+fileNames <- list.files(fileStorage) 
+
+filePrefix = function(files,prefixes) {      
   output <- paste(prefixes,files,sep = "")
   return(output)
 }
 
-newFileNames <- filePrefix(fileNames,"x")
+newFileNames <- filePrefix(fileNames,"x") #Replace 'x' with desired time prefix.
 
 file.rename(paste0(fileStorage,fileNames),
-            paste0(fileStorage,newFileNames))
+            paste0(fileStorage,newFileNames)) #Existing files will be renamed with this output. you can change the location of the output by specifying a different folder where the second 'fileStoare' is called.
 
 ```
 
