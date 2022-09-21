@@ -20,9 +20,9 @@ fileNames <- list.files(fileStorage)
 #fileNames <- toupper(fileNames) # If file name is not already capitalized unhash and run this line.
 
 ################ Only use this chunk to take out Z values that look like this (t2LBC1+5900000.asd.txt)###########
-fileNameDups <- fileNames
-substr(fileNameDups,7,9) <- "   " 
-fileNameDups <- fileNameDups %>% gsub(pattern = "[[:space:]]", replacement = "")
+#fileNameDups <- fileNames
+#substr(fileNameDups,7,9) <- "   " 
+#fileNameDups <- fileNameDups %>% gsub(pattern = "[[:space:]]", replacement = "")
 #################################################################################################################
 
 filePrefix = function(files,prefixes) {      
