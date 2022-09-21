@@ -19,12 +19,19 @@ fileNames <- list.files(fileStorage)
 
 #fileNames <- toupper(fileNames) # If file name is not already capitalized unhash and run this line.
 
+################ Only use this chunk to take out Z values that look like this (t2LBC1+5900000.asd.txt)###########
+fileNameDups <- fileNames
+substr(fileNameDups,7,9) <- "   " 
+fileNameDups <- fileNameDups %>% gsub(pattern = "[[:space:]]", replacement = "")
+#################################################################################################################
+
 filePrefix = function(files,prefixes) {      
   output <- paste(prefixes,files,sep = "")
   return(output)
 }
 
 newFileNames <- filePrefix(fileNames,"x") #Replace 'x' with desired time prefix.
+#newFileNames <- filePrefix(fileNameDups,"") # unhash and use this if you are getting rid of Z values
 
 file.rename(paste0(fileStorage,fileNames),
             paste0(fileStorage,newFileNames)) #Existing files will be renamed with this output. you can change the location of the output by specifying a different folder where the second 'fileStorage' is called.
