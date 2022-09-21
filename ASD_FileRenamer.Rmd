@@ -17,6 +17,8 @@ fileStorage <- "C:\\Users\\lochl\\OneDrive\\Desktop\\Sawfly Lab\\ASD\\2022\\Leaf
 
 fileNames <- list.files(fileStorage) 
 
+#fileNames <- toupper(fileNames) # If file name is not already capitalized unhash and run this line.
+
 filePrefix = function(files,prefixes) {      
   output <- paste(prefixes,files,sep = "")
   return(output)
@@ -25,7 +27,7 @@ filePrefix = function(files,prefixes) {
 newFileNames <- filePrefix(fileNames,"x") #Replace 'x' with desired time prefix.
 
 file.rename(paste0(fileStorage,fileNames),
-            paste0(fileStorage,newFileNames)) #Existing files will be renamed with this output. you can change the location of the output by specifying a different folder where the second 'fileStoare' is called.
+            paste0(fileStorage,newFileNames)) #Existing files will be renamed with this output. you can change the location of the output by specifying a different folder where the second 'fileStorage' is called.
 
 ```
 
