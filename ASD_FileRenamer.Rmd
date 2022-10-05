@@ -25,6 +25,13 @@ fileNames <- list.files(fileStorage)
 #fileNameDups <- fileNameDups %>% gsub(pattern = "[[:space:]]", replacement = "")
 #################################################################################################################
 
+################ Only use this code if your data extends to "t10"
+################ Use this function to add a "0" so the time format is consistent.
+################ i.e. "t1" to "t01"
+
+#newFileNames <- gsub(fileNames, pattern = "(.{1})(.*)", replacement = "\\10\\2")
+#################################################################
+
 filePrefix = function(files,prefixes) {      
   output <- paste(prefixes,files,sep = "")
   return(output)
