@@ -2,7 +2,7 @@ install.packages("prospectr")
 suppressMessages(library(tidyverse))
 suppressMessages(library(prospectr))
 
-filesLocation <- "C:\\Users\\lochl\\OneDrive\\Desktop\\Sawfly Lab\\ASD\\2022\\Plant\\PA\\DC1.5.1.22\\Processed\\"
+filesLocation <- "C:\\Users\\lochl\\OneDrive\\Desktop\\Sawfly Lab\\ASD\\2022\\Plant\\PA\\DC1.5.1.22\\Processed\\" #Files in this location should already be transformed to reflectance and in the ".txt" format.
 fileNames <- list.files(filesLocation)
 
 
@@ -25,10 +25,10 @@ splicer <- function(x){
 
 testDataSpliced <- lapply(testFiles,splicer)
 
-testDataSpliced %>%
+testDataSpliced %>% # This graph illustrates the difference between the raw reflectance and the spliced data. 
   bind_rows %>%
   group_by(fileName) %>%
-  filter(fileName == "t0PAC100001.asd.txt") %>%
+  filter(fileName == "t0PAC100001.asd.txt") %>% # this is an arbitrary filename.
   ggplot(mapping = aes(x = Wavelength,y = Reflectance, group = fileName, color = fileName)) + 
   geom_line(mapping = aes(x = Wavelength, y = splicedReflectance, color = "Spliced Reflectance")) +
   geom_line(size = 1) + xlim(350,2500) + ylim(0.0,1) 
