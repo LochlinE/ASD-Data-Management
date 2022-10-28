@@ -1,0 +1,572 @@
+---
+title: "Plant Data 2022"
+author: "Lochlin Ermatinger"
+date: "2022-10-18"
+output: word_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r library packages}
+library(tidyverse)
+library(readxl)
+library(prospectr)
+library(vegan)
+library(car)
+library(vioplot)
+library(yarrr)
+library(RColorBrewer)
+library(ggplot2)
+library(psych)
+library(wesanderson)
+library(MASS)
+library(scales)
+```
+
+```{r Read in infestation Data & Tables for Indexing}
+# Read in infestation data
+infestationData <- read_excel("C:\\Users\\lochl\\OneDrive\\Desktop\\Sawfly Lab\\ASD\\2022\\Plant\\InfestationData.xlsx")
+infestationData <- infestationData %>%
+  mutate(percentSigInfested = round(totalSignificantInfestations/totalStems*100)) %>%
+  mutate(wssPresence = ifelse(percentSigInfested > 0,"Y","N")) %>%
+  mutate(grainYieldRaw = uninfestedYield + infestedYield) %>%
+  mutate(stemYield = (uninfestedYield + infestedYield) / totalStems)
+
+#Define location of reflectance files
+# reflectanceFileStorage <- "C:\\Users\\lochl\\OneDrive\\Desktop\\Sawfly Lab\\ASD\\2022\\Plant\\AllFiles\\" #Raw time Data
+reflectanceFileStorage <- "C:\\Users\\lochl\\OneDrive\\Desktop\\Sawfly Lab\\ASD\\2022\\Plant\\timeNormalized\\AllFiles\\" #Time normalized Refelctance Data
+fileNames <- list.files(reflectanceFileStorage)
+
+# Create tables with appropriate attribute information based on file naming conventions
+fileNames <- list.files(reflectanceFileStorage)
+```
+
+```{r Splice Reflectance Data}
+readRaw <- function(name, location) {
+  x = read.delim(paste0(location, name))
+  names(x)[2] <- "Reflectance"
+  x <- mutate(x, fileName = name)
+  return(x)
+}
+
+testFiles <- lapply(fileNames, readRaw, location = reflectanceFileStorage)
+names(testFiles) <- c(1:length(testFiles))
+
+splicer <- function(x){
+  x <- mutate(x, splicedReflectance = spliceCorrection(X = x$Reflectance,
+                                            wav = x$Wavelength,
+                                            splice = c(965,1775),
+                                            interpol.bands = 10))
+}
+
+testDataSpliced <- lapply(testFiles,splicer)
+
+# testDataSpliced %>% # This graph illustrates the difference between the raw reflectance and the spliced data. 
+#   bind_rows %>%
+#   group_by(fileName) %>%
+#   filter(fileName == "t00PAC100001.asd.txt") %>% # this is an arbitrary filename.
+#   ggplot(mapping = aes(x = Wavelength,y = Reflectance, group = fileName, color = fileName)) + 
+#   geom_line(mapping = aes(x = Wavelength, y = splicedReflectance, color = "Spliced Reflectance")) +
+#   geom_line(size = 1) + xlim(350,2500) + ylim(0.0,1) 
+
+```
+
+```{r Create File and Sample Index Tables}
+fileNameSample <- 
+  gsub("[[:digit:]]{5}[.].*", "", fileNames) # Saves everything left of 5 digits from .asd
+
+sampleNames <- fileNameSample %>% #unique(fileNameSample) %>%# creates a vector with unique file names
+  gsub(pattern = "[[:space:]]", replacement = "") # This line looks for a space and removes it
+rm(samplesTable)
+
+filesTable <-
+  tibble(fileIdx = 1:length(fileNames),
+         fileName = fileNames,
+         sampleName = sampleNames)
+
+samplesTable <-
+  tibble(fileIdx = 1:length(fileNames), # creates a table with only unique file names sampleIdx is arbitrary
+  fileName = fileNames) %>%
+  mutate(time = substr(fileName,1,3)) %>%
+  mutate(replicateType = substr(fileName,4,4)) %>% 
+  mutate(rep = substr(fileName,5,5)) %>% 
+  mutate(treatment = substr(fileName,6,6)) %>%
+  mutate(plantName = substr(fileName,4,7)) %>%
+  mutate(sampleName = substr(fileName,1,7))
+
+```
+
+```{r Vegetation Indices Table Creation}
+
+repRef <- testDataSpliced %>% 
+  bind_rows() %>% 
+  inner_join(filesTable) %>%
+  group_by(sampleName,Wavelength) %>%
+  mutate(sampleName = substr(sampleName,1,7)) %>%
+  summarize(spliceRef = mean(splicedReflectance)) %>%
+  #inner_join(samplesTable, by = c("sampleName" = "sampleName")) %>%
+  mutate(plantName = substr(sampleName,4,7)) %>%
+  mutate(time = substr(sampleName,1,3)) %>%
+  inner_join(infestationData, by = c("plantName" = "plantName"))
+
+blueCalc = function( data ){ 
+  nir = data$spliceRef[data$Wavelength == 470]
+  return(nir)
+}
+
+greenCalc = function( data ){ 
+  nir = data$spliceRef[data$Wavelength == 560]
+  return(nir)
+}
+
+redCalc = function( data ){ 
+  red = data$spliceRef[data$Wavelength == 665]
+  return(red)
+}
+
+rededgeCalc = function( data ){ 
+  red = data$spliceRef[data$Wavelength == 720]
+  return(red)
+}
+
+nirCalc = function( data ){ 
+  nir = data$spliceRef[data$Wavelength == 865]
+  return(nir)
+}
+ndviCalc = function( data ){ # Normalized Difference Vegetation Index
+  red = data$spliceRef[data$Wavelength == 655]
+  nir = data$spliceRef[data$Wavelength == 865]
+  output <- ((nir - red)/(nir + red))
+  return(output)
+}
+
+lwiCalc = function( data ){ # Leaf Water Index
+  R1300 = data$spliceRef[data$Wavelength == 1300]
+  R1450 = data$spliceRef[data$Wavelength == 1450]
+  output <- R1300 - R1450
+  return(output)
+}
+
+priCalc = function( data ){ # Photochemical Reflectance Index
+  R531 = data$spliceRef[data$Wavelength == 531]
+  R570 = data$spliceRef[data$Wavelength == 570]
+  output <- (R531 - R570)/(R531 + R570)
+  return(output)
+}
+
+reipCalc <- function( data ) { # Red Edge Inflection Point
+  r670 <- data$spliceRef[data$Wavelength == 670]
+  r700 <- data$spliceRef[data$Wavelength == 700]
+  r740 <- data$spliceRef[data$Wavelength == 740]
+  r780 <- data$spliceRef[data$Wavelength == 780]
+  absorptionMin <- 700
+  sig <- 40
+  reip <- (absorptionMin+sig*(((r670+r780)/2) - r700)/(r740-r700))
+  return(reip)
+}
+
+ndmiCalc <- function( data ){ # Normalized Difference Moisture Index
+  R860 = data$spliceRef[data$Wavelength == 860]
+  R1240 = data$spliceRef[data$Wavelength == 1240]
+  output <- (R860 - R1240)/(R860 + R1240)
+  return(output)
+}
+
+msrCalc <- function( data ){
+  R665 = data$spliceRef[data$Wavelength == 665]
+  R865 = data$spliceRef[data$Wavelength == 865]
+  output <- (R865/R665) - 1/(sqrt(R865/R665)) + 1
+  return(output)
+}
+
+swirCalc <- function( data ){
+  R1780 = data$spliceRef[data$Wavelength == 1780] 
+  R1926 = data$spliceRef[data$Wavelength == 1926]
+  output <- (R1780-R1926)/(R1780+R1926)
+  return(output)
+}
+
+niriCalc <- function( data ){
+  R1100 = data$spliceRef[data$Wavelength == 1100] 
+  R1180 = data$spliceRef[data$Wavelength == 1180]
+  output <- (R1100 - R1180) / (R1100 + R1180)
+  return(output)
+}
+
+sipiCalc <- function( data ){
+  R445 = data$spliceRef[data$Wavelength == 445] 
+  R680 = data$spliceRef[data$Wavelength == 680]
+  R800 = data$spliceRef[data$Wavelength == 800]
+  output <- (R800 - R445) / (R800 + R680)
+  return(output)
+}
+
+psriCalc <- function( data ){
+  R500 = data$spliceRef[data$Wavelength == 500] 
+  R680 = data$spliceRef[data$Wavelength == 680]
+  R750 = data$spliceRef[data$Wavelength == 750]
+  output <- (R680 - R500) / R750
+  return(output)
+}
+
+mariCalc <- function( data ) {
+  R530 = data$spliceRef[data$Wavelength == 530]
+  R570 = data$spliceRef[data$Wavelength == 570]
+  R690 = data$spliceRef[data$Wavelength == 690]
+  R710 = data$spliceRef[data$Wavelength == 710]
+  R865 = data$spliceRef[data$Wavelength == 865]
+  output <- ((1/(R530-R570))-(1/(R690-R710)))*R865
+  return(output)
+}
+
+cri1Calc <- function( data ) {
+  R510 = data$spliceRef[data$Wavelength == 510]
+  R550 = data$spliceRef[data$Wavelength == 550]
+  output <- (1/R510) - (1/R550)
+  return(output)
+}
+
+cri2Calc <- function( data ) {
+  R510 = data$spliceRef[data$Wavelength == 510]
+  R700 = data$spliceRef[data$Wavelength == 700]
+  output <- (1/R510) - (1/R700)
+  return(output)
+}
+
+mcariCalc <- function( data ) {
+  R550 = data$spliceRef[data$Wavelength == 550]
+  R670 = data$spliceRef[data$Wavelength == 670]
+  R700 = data$spliceRef[data$Wavelength == 700]
+  R800 = data$spliceRef[data$Wavelength == 800]
+  output <- ((R700-R670)-0.2*(R700-R550)*(R700/R670))/
+  ((1+0.16)((R800-R670)/(R800+R670+0.16)))
+  return(output)
+}
+
+mcari1Calc <- function( data ){
+  R550 = data$spliceRef[data$Wavelength == 550]
+  R670 = data$spliceRef[data$Wavelength == 670]
+  R700 = data$spliceRef[data$Wavelength == 700]
+  v = 0.2
+  output <- ((R700-R670)-v*(R700-R550))*(R700/R670)
+  return(output)
+}
+
+mCari1510Calc <- function( data ){
+  R550 = data$spliceRef[data$Wavelength == 550]
+  R1510 = data$spliceRef[data$Wavelength == 1510]
+  R700 = data$spliceRef[data$Wavelength == 700]
+  output <- ((R700-R1510)-0.2*(R700-R550))(R700/R1510)
+  return(output)
+} 
+
+vegetationIndicesTable <- 
+  tibble(sampleName = unique(repRef$sampleName.x),
+         time = substr(sampleName,1,3),
+         plantName = substr(sampleName,4,7),
+         blueValue = blueCalc(repRef),
+         greenValue = greenCalc(repRef),
+         redValue = redCalc(repRef),
+         rededgeValue = rededgeCalc(repRef),
+         nirValue = nirCalc(repRef),
+         ndviValue = ndviCalc(repRef),
+         lwiValue = lwiCalc(repRef),
+         priValue = priCalc(repRef),
+         reipValue = reipCalc(repRef),
+         ndmiValue = ndmiCalc(repRef),
+         msrValue = msrCalc(repRef),
+         niriValue = niriCalc(repRef),
+         swirValue = swirCalc(repRef),
+         sipiValue = sipiCalc(repRef),
+         psriValue = psriCalc(repRef),
+         mariValue = mariCalc(repRef),
+         cri1Value = cri1Calc(repRef),
+         cri2Value = cri2Calc(repRef))
+         #mcariValue = mcariCalc(repRef),
+         #mcari1Value = mcari1Calc(repRef))
+         #mcari1510Value = mCari1510Calc(repRef))
+```
+
+```{r Spec Res Curve Generic}
+selectWaves <- c("437","500","560","597","643","669","720","825","967","1130","1184","1450","1670","1789","1930","2200")
+sigWaves <- c("560","720","825","967","1130","1184","1670","1930","2200")
+
+repRef %>%
+  filter(plantName == "PAC1") %>%
+  filter(time == "t00") %>%
+  ggplot(mapping = aes(x = Wavelength, y = spliceRef, color = plantName)) +
+  geom_line(size = 1) + 
+  geom_vline(xintercept = c(560,720,825,967,1130,1184,1670,1930,2200))+
+  geom_text(aes(x = 560,color = "green",label = "560",y=.65,angle=90, vjust = 1.2)) +
+  geom_text(aes(x = 720,color = "red",label = "720",y=.65,angle=90, vjust = 1.2)) +
+  geom_text(aes(x = 825,color = "gray",label = "825",y=.65,angle=90, vjust = 1.2)) +
+  geom_text(aes(x = 967,color = "gray",label = "967",y=.65,angle=90, vjust = 1.2)) +
+  geom_text(aes(x = 1130,color = "gray",label = "1130",y=.65,angle=90, vjust = -.6)) +
+  geom_text(aes(x = 1184,color = "gray",label = "1184",y=.65,angle=90, vjust = 1.2)) +
+  geom_text(aes(x = 1670,color = "lightBlue",label = "1670",y=.65,angle=90, vjust = 1.2)) +
+  geom_text(aes(x = 1930,color = "lightBlue",label = "1930",y=.65,angle=90, vjust = 1.2)) +
+  geom_text(aes(x = 2200,color = "lightBlue",label = "2200",y=.65,angle=90, vjust = 1.2)) +
+  #geom_text(aes(x = c(560,720,825,967,1130,1184,1670,1930,2200), label = c("560","720","825","967","1130","1184","1670","1930","2200"), y = .65)) +
+  theme_bw() + 
+  xlim(350,2500) + ylim(0.0,.75) +
+  scale_color_manual(values = c("PAC1" = "lightGreen"),labels = c("Healthy Wheat Leaf")) +
+  ggtitle("Healthy Wheat Leaf Spectral Response Curve", subtitle = "Wavelengths Found to be Significantly Different (Cut vs. Control p<.05) 38 Days after Infestation") +
+  labs(x = "Wavelength (nm)", y = "Reflectance", color = "Reflectance")
+```
+
+```{r Spectral Response Curves}
+# reps <- c("A")
+timeVar <- "t10"
+
+
+#no_group <- infestationData$plantName[infestationData$percentSigInfested == 0]
+#low_group
+#med_group <- infestationData$plantName[infestationData$percentSigInfested > 25]
+#hi_group <- infestationData$plantName[infestationData$percentSigInfested > 25]
+
+#trtGroup <- substr(c(infestationData$plantName[infestationData$treatment == "Treatment"]),2,4)
+#ctrlGroup <- substr(c(infestationData$plantName[infestationData$treatment == "Control"]),2,4)
+
+
+sc <- scale_colour_gradientn(colours = myPalette(100))
+
+repRef %>% #Graphing reflectance by group
+  #filter(rep %in% reps) %>%
+  filter(time %in% timeVar) %>%
+  #filter(plantName %in% c(no_group,hi_group)) %>%
+  group_by(infestationCat,Wavelength) %>%
+  summarise(spliceRef = mean(spliceRef)) %>%
+  ggplot(mapping = aes(x = Wavelength, y = spliceRef, group = infestationCat)) +
+  geom_line(aes(color = infestationCat),size = 2) + 
+  theme_bw() +
+  xlim(350,2500) + ylim(0.0,.75) +
+  scale_color_manual(values = c("none" = "lightBlue","low" = "yellow","high" = "red"),labels = c("0","1-24","25-50"), name = "WSS Infestation (%)") +
+  #scale_color_gradient(values = c("Treatment" = "red", "Control" = "lightBlue" ),labels = c('treatment','control')) +
+  ggtitle("Plant Level Samples", subtitle = "70 Days After Infestation") +
+  labs(x = "Wavelength (nm)", y = "Reflectance")
+
+
+```
+
+```{r Create Vectors to translate "tx" to days after infestation}
+
+Adates <- c(t00 = as.Date('2022-5-1'),t01 = as.Date('2022-5-9'),t02 = as.Date('2022-5-18'),t03 = as.Date('2022-5-25'),t04 = as.Date('2022-5-30'),t05 = as.Date('2022-6-6'),t06 = as.Date('2022-6-13'), t07 = as.Date('2022-6-21'),t08 = as.Date('2022-6-28'),t09 = as.Date('2022-7-2'),t10 = as.Date('2022-7-5'), t11 = as.Date('2022-7-13'))
+
+Bdates <- c(t00 = as.Date('2022-5-6'),t01 = as.Date('2022-5-13'),t02 = as.Date('2022-5-19'),t03 = as.Date('2022-5-28'),t04 = as.Date('2022-6-11'),t05 = as.Date('2022-6-17'),t06 = as.Date('2022-6-29'),t07 = as.Date('2022-7-2'), t08 = as.Date('2022-7-7'))
+
+Cdates <- c(t00 = as.Date('2022-5-15'),t01 = as.Date('2022-6-6'),t02 = as.Date('2022-6-16'),t03 = as.Date('2022-6-29'),t04 = as.Date('2022-7-2'),t05 = as.Date('2022-7-7'),t06 = as.Date('2022-7-13'))
+
+Ddates <- c(t00 = as.Date('2022-6-11'),t01 = as.Date('2022-6-22'),t02 = as.Date('2022-6-30'),t03 = as.Date('2022-7-11'),t04 = as.Date('2022-7-15'),t05 = as.Date('2022-7-19'),t06 = as.Date('2022-7-22'),t07 = as.Date('2022-7-25'))
+
+
+JAdays <- format(Adates, "%j") 
+JBdays <- format(Bdates, "%j")
+JCdays <- format(Cdates, "%j")
+JDdays <- format(Ddates, "%j")
+
+
+
+
+
+Daynames <-c("Adays","Bdays","Cdays","Ddays","Edays","Fdays")
+t <- paste(rep("t",7),seq(0,6), sep = "")
+
+DayMat <- tibble(Adays[1:7],Bdays[1:7],Cdays[1:7],Ddays[1:7]) %>% 
+  t() %>% 
+  data.frame %>% 
+  rename_with (~ t)
+
+medianT <- lapply(DayMat,median)
+medianT <- sapply(medianT, round)
+names(medianT)=="t0"
+```
+
+```{r plotting VI's}
+install.packages("devtools")
+devtools::install_github("jaredhuling/jcolors")
+library(jcolors)
+
+ timeVar <- "t06"
+# reps <- c("A")
+
+ sc <- scale_colour_gradientn(colours = myPalette(100))
+mid <- mean(infestationData$percentSigInfested)
+# vegetationIndicesTable %>% #USe this to plot data categorically
+#   inner_join(infestationData, by = c("plantName" = "plantName")) %>%
+#   #filter(rep %in% reps) %>%
+#   #filter(time %in% timeVar) %>%
+#   ggplot(mapping = aes(time,greenValue, group = infestationCat)) +
+#   geom_point(aes(color = infestationCat)) +
+#   #geom_boxplot() + 
+#   theme_bw() + 
+#   #scale_color_manual(values = c("A" = "blue", "B" = "green", "C" = "orange","D" = "red"),labels = c("A","B","C","D")) +
+#   ggtitle("Plant Level Samples", subtitle = "Photochemical Reflective Index Across Time") +
+#   labs(x = "Time Since Infestation", y = "Photochemical Reflective Index")
+
+vegetationIndicesTable %>% #Use this to plot data continuously
+  inner_join(infestationData, by = c("plantName" = "plantName")) %>%
+  ggplot(mapping = aes(time,redValue, color = plantName)) +
+  geom_point(aes(color = percentSigInfested)) +
+  theme_bw() + 
+  #scale_color_gradient2(midpoint = mid, low = muted("blue"), high = muted("red")) +
+  scale_color_gradient2("pal3") +
+  ggtitle("Plant Level Samples", subtitle = "Photochemical Reflective Index Across Time") +
+  labs(x = "Time Since Infestation", y = "Photochemical Reflective Index")
+
+
+
+```
+ 
+```{r Standard Deviation of Reflectance}
+# "560","720","825","967","1130","1184","1670","1930","2200"
+timeVar <- "t00"
+reps <- c("A","B","C","D")
+
+mint00 <- repRef %>% 
+  filter(time %in% timeVar) %>%
+  group_by(Wavelength) %>%
+  summarise(min(spliceRef))
+
+maxt00 <- repRef %>% 
+  filter(time %in% timeVar) %>%
+  group_by(Wavelength) %>%
+  summarise(max(spliceRef)) 
+
+sdt00 <- repRef %>% 
+  filter(time %in% timeVar) %>%
+  group_by(Wavelength) %>%
+  summarise(sd(spliceRef)) 
+
+ranger <- cbind(mint00,maxt00[,2],sdt00[,2])
+names(ranger) <- c("Wavelength","min","max","sd")
+ranger <- ranger %>%
+  mutate(distance = max - min)
+
+ggplot(ranger,aes(Wavelength,sd)) +
+  geom_point() +
+  theme_bw() +
+  #xlim(350,2500) + ylim(0.0,.4) +
+  ggtitle("Plant Level Samples", subtitle = "Standard Deviation by Wavelength") +
+  labs(x = "Wavelength (nm)", y = "Reflectance")
+
+
+
+
+```
+
+```{r NMDS on Select Wavelengths}
+reps <- c("A","B","C","D","E","F")
+timeVar <- "t08"
+#selectWaves <- c("437","500","560","597","643","669","720","825","967","1130","1184","1450","1670","1789","1930","2200")
+sigWaves <- c("560","720","825","967","1130","1184","1670","1930","2200") 
+
+test <- repRef %>%
+  filter(time == timeVar) %>%
+    group_by(plantName) %>%
+  select(c(Wavelength,plantName,spliceRef)) %>%
+  pivot_wider(names_from = plantName, values_from = spliceRef) %>% t() %>%
+  as.data.frame() %>%
+  rename_with(~ c(350:2500)) %>%
+  slice(-1) %>%
+  select(sigWaves)
+
+testAsPercent <- test[,1:9]*100 # Convert Reflectance values to a percent (not sure if it matters)
+
+test_NMDS = metaMDS(pmax(testAsPercent),k=2, try = 1000) # pmax takes converts negative values to 0.
+
+nmds_scores_test <- test_NMDS %>% 
+  scores()
+
+stressplot(test_NMDS)
+
+# joining NMDS data to attribute data
+## Filter samples table to match time of this run.
+
+samplesTable %>% left_join(infestationData, by = c("plantName"))
+
+samplesTableNMDS <- samplesTable %>% 
+  left_join(infestationData, by = c("plantName")) 
+
+test_NMDS_results <- nmds_scores_test$sites %>% # if error: add or delete "$sites"
+  as.data.frame() %>%
+  rownames_to_column("plantName") %>%
+  left_join(samplesTableNMDS, by = "plantName")
+
+# creating a mean for each endohpyte group
+test_NMDS_centroids <- test_NMDS_results %>%
+  group_by(wssPresence) %>%
+  summarize(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
+
+# plotting the NMDS results with the centroid built in
+ggplot(test_NMDS_results, aes(NMDS1, NMDS2, col = wssPresence, fill = wssPresence)) +
+  stat_ellipse(geom = 'polygon', col = "black", alpha = 0.5) +
+  geom_point(shape = 21, col = "black") +
+  ggtitle("38 Days Post Infestation", subtitle = "Cut vs Control Stems")
+  geom_point(data = test_NMDS_centroids, size = 5, shape = 21, color = "black", 
+             aes(fill = cut), show.legend = FALSE)
+```
+
+```{r MMLR // MANOVA}
+# Regress the waves we found to be significantly different in the leaf dataset against percent significant infestations
+
+timeVar <- "t07"
+sigWaves <- c("560","720","825","967","1130","1184","1670","1930","2200") 
+
+test <- repRef %>%
+  filter(time == timeVar) %>%
+  group_by(plantName) %>%
+  select(c(Wavelength,plantName,spliceRef)) %>%
+  pivot_wider(names_from = plantName, values_from = spliceRef) %>% t() %>%
+  as.data.frame() %>%
+  rename_with(~ c(350:2500)) %>%
+  slice(-1)
+  #select(selectWaves)
+test <- test %>%
+  mutate(plantName = row.names(test)) %>%
+  inner_join(infestationData, by = c("plantName")) %>%
+  select(c(sigWaves,percentSigInfested))
+
+ # ICC(test[,1:9])
+
+Waves <- cbind(test$`560`,test$`720`,test$`825`,test$`967`,test$`1130`,test$`1184`,test$`1670`,test$`1930`,test$`2200`)
+
+manovaSWaves <- lm(Waves ~ test$percentSigInfested)
+
+Manova(manovaSWaves)
+# summary(manovaSWaves)
+
+Anova(manovaSWaves)
+ 
+ 
+```
+
+```{r Plot MMLR MANOVA p-values}
+
+MPs <- read_excel("C:\\Users\\lochl\\OneDrive\\Desktop\\Sawfly Lab\\ESA 2022\\Figures\\plantManova\\plantMMLR_MANOVA_Ps.xlsx")
+
+MPs$time <- factor(MPs$time, levels = c( "t0","t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"))
+MPs$wavelength <- factor(MPs$wavelength)
+
+MPs %>%
+  ggplot(mapping = aes(x = wavelength, y = pValue, group = time)) +
+  geom_point() + geom_line() + n
+  scale_y_reverse(limits = c(.1,0)) 
+  
+MPs %>%
+  ggplot(mapping = aes(x = time, y = pValue, group = wavelength)) +
+  geom_line() + 
+  scale_y_reverse(limits = c(.5,0)) + scale_color_manual(values = c("560" = "lightBlue","720" = "yellow","825" = "red","967" = "red","1130" = "red","1184" = "red","1670" = "red","1930" = "","825" = "red"))
+values = wes_palette("GrandBudapest1", n = 9, type = "discrete")
+```
+
+```{r Modeling Yield}
+
+infestationData %>%
+  ggplot(aes(percentSigInfested,grainYieldRaw)) + 
+  geom_point() + geom_smooth(method = 'lm') +
+  theme_minimal()
+
+yieldSLR <- lm(grainYieldRaw ~ percentSigInfested, data = infestationData)
+anova(yieldSLR)
+ ```
+
