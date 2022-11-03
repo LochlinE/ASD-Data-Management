@@ -382,34 +382,35 @@ names(medianT)=="t0"
 ```
 
 ```{r plotting VI's}
-install.packages("devtools")
-devtools::install_github("jaredhuling/jcolors")
+# install.packages("devtools")
+#devtools::install_github("jaredhuling/jcolors")
 library(jcolors)
 
  timeVar <- "t06"
-# reps <- c("A")
+ reps <- c("A")
 
  sc <- scale_colour_gradientn(colours = myPalette(100))
 mid <- mean(infestationData$percentSigInfested)
-# vegetationIndicesTable %>% #USe this to plot data categorically
-#   inner_join(infestationData, by = c("plantName" = "plantName")) %>%
-#   #filter(rep %in% reps) %>%
-#   #filter(time %in% timeVar) %>%
-#   ggplot(mapping = aes(time,greenValue, group = infestationCat)) +
-#   geom_point(aes(color = infestationCat)) +
-#   #geom_boxplot() + 
-#   theme_bw() + 
-#   #scale_color_manual(values = c("A" = "blue", "B" = "green", "C" = "orange","D" = "red"),labels = c("A","B","C","D")) +
-#   ggtitle("Plant Level Samples", subtitle = "Photochemical Reflective Index Across Time") +
-#   labs(x = "Time Since Infestation", y = "Photochemical Reflective Index")
+
+vegetationIndicesTable %>% #USe this to plot data categorically
+  inner_join(infestationData, by = c("plantName" = "plantName")) %>%
+  #filter(rep %in% reps) %>%
+  #filter(time %in% timeVar) %>%
+  ggplot(mapping = aes(time,priValue, group = infestationCat)) +
+  geom_point(aes(color = infestationCat)) +
+  #geom_boxplot() +
+  theme_bw() +
+  #scale_color_manual(values = c("A" = "blue", "B" = "green", "C" = "orange","D" = "red"),labels = c("A","B","C","D")) +
+  ggtitle("Plant Level Samples", subtitle = "Photochemical Reflective Index (PRI) Across Time") +
+  labs(x = "Time Since Infestation", y = "PRI")
 
 vegetationIndicesTable %>% #Use this to plot data continuously
   inner_join(infestationData, by = c("plantName" = "plantName")) %>%
-  ggplot(mapping = aes(time,redValue, color = plantName)) +
+  ggplot(mapping = aes(time,priValue, color = plantName)) +
   geom_point(aes(color = percentSigInfested)) +
   theme_bw() + 
   #scale_color_gradient2(midpoint = mid, low = muted("blue"), high = muted("red")) +
-  scale_color_gradient2("pal3") +
+  scale_color_gradient2("red") +
   ggtitle("Plant Level Samples", subtitle = "Photochemical Reflective Index Across Time") +
   labs(x = "Time Since Infestation", y = "Photochemical Reflective Index")
 
@@ -568,5 +569,5 @@ infestationData %>%
 
 yieldSLR <- lm(grainYieldRaw ~ percentSigInfested, data = infestationData)
 anova(yieldSLR)
- ```
 
+```
